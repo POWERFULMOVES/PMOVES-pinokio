@@ -1,5 +1,0 @@
-fastapi
-uvicorn[standard]
-nats-py>=2.7.0
-python-dotenv
-prometheus-client==0.20.0
