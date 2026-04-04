@@ -227,10 +227,30 @@ const safeParseUrl = (value, base) => {
   }
 }
 const popupNavigationGuards = new Map()
-const isRootShellUrl = (value) => {
-  const root = safeParseUrl(root_url)
-  const target = safeParseUrl(value, root ? root.href : undefined)
-  return Boolean(root && target && target.origin === root.origin && (target.pathname || '/') === '/')
+const PINOKIO_NAVIGATION_HOSTS = new Set([
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '[::1]',
+  'pinokio.co',
+  'pinokio.computer'
+])
+const isPinokioNavigationHost = (value) => {
+  const hostname = String(value || '').trim().toLowerCase()
+  if (!hostname) {
+    return false
+  }
+  return PINOKIO_NAVIGATION_HOSTS.has(hostname)
+    || hostname.endsWith('.localhost')
+    || hostname.endsWith('.pinokio.co')
+    || hostname.endsWith('.pinokio.computer')
+}
+const isPinokioNavigationUrl = (value, base) => {
+  const target = safeParseUrl(value, base || (root_url || undefined))
+  if (!target || (target.protocol !== 'http:' && target.protocol !== 'https:')) {
+    return false
+  }
+  return popupShellManager.isPinokioWindowUrl(target.href, root_url) || isPinokioNavigationHost(target.hostname)
 }
 const getHttpNavigationTarget = (value, base) => {
   const target = safeParseUrl(value, base)
@@ -279,12 +299,16 @@ const readFrameFieldSafely = (frame, field) => {
     return undefined
   }
 }
-const openNonPinokioNavigationInPopup = ({ event, owner, url, frame } = {}) => {
-  const target = getHttpNavigationTarget(url, root_url || undefined)
+const openNonPinokioHttpsInBrowser = ({ event, owner, url, frame, openerWebContents, baseUrl } = {}) => {
+  const target = resolveNavigationTarget({
+    url,
+    openerWebContents,
+    baseUrl: baseUrl || readFrameFieldSafely(frame, 'url')
+  })
   if (!target || !owner || owner.isDestroyed?.() || owner.__pinokioPopupShell) {
     return false
   }
-  if (popupShellManager.isPinokioWindowUrl(target.href, root_url)) {
+  if (target.protocol !== 'https:' || isPinokioNavigationUrl(target.href)) {
     return false
   }
   if (event && typeof event.preventDefault === 'function') {
@@ -307,7 +331,7 @@ const openNonPinokioNavigationInPopup = ({ event, owner, url, frame } = {}) => {
       return true
     }
   }
-  popupShellManager.openExternalWindow({ url: target.href })
+  shell.openExternal(target.href).catch(() => {})
   return true
 }
 const installForceDestroyOnClose = (win) => {
@@ -3086,6 +3110,9 @@ const attach = (event, webContents) => {
   webContents.on('will-prevent-unload', (event) => {
     event.preventDefault()
   })
+  webContents.once('did-finish-load', () => {
+    webContents.opened = true
+  })
 
   webContents.on('will-navigate', (event, url) => {
     if (!webContents.opened) {
@@ -3100,7 +3127,7 @@ const attach = (event, webContents) => {
       if (openPopupShellHttpsNavigationInBrowser({ event, owner, url })) {
         return
       }
-      if (openNonPinokioNavigationInPopup({ event, owner, url })) {
+      if (openNonPinokioHttpsInBrowser({ event, owner, url, openerWebContents: webContents })) {
         return
       }
       const target = safeParseUrl(url, root_url || undefined)
@@ -3113,33 +3140,23 @@ const attach = (event, webContents) => {
   webContents.on('will-frame-navigate', (event) => {
     const owner = webContents.getOwnerBrowserWindow()
     const frame = event && event.frame
-    const parentFrame = readFrameFieldSafely(frame, 'parent')
-    const grandparentFrame = readFrameFieldSafely(parentFrame, 'parent')
-    const isDirectChildFrame = Boolean(
-      frame &&
-      webContents.mainFrame &&
-      parentFrame &&
-      !grandparentFrame &&
-      parentFrame === webContents.mainFrame
-    )
-    if (!isDirectChildFrame) {
-      return
-    }
-    const currentUrl = (() => {
+    const frameUrl = readFrameFieldSafely(frame, 'url') || (() => {
       try {
         return webContents.getURL()
       } catch (_) {
         return ''
       }
     })()
-    if (!isRootShellUrl(currentUrl)) {
+    if (openPopupShellHttpsNavigationInBrowser({ event, owner, url: event && event.url, openerWebContents: webContents, baseUrl: frameUrl })) {
       return
     }
-    openNonPinokioNavigationInPopup({
+    openNonPinokioHttpsInBrowser({
       event,
       owner,
       url: event && event.url,
-      frame
+      frame,
+      openerWebContents: webContents,
+      baseUrl: frameUrl
     })
   })
 //  webContents.session.defaultSession.loadExtension('path/to/unpacked/extension').then(({ id }) => {
@@ -3307,7 +3324,10 @@ const attach = (event, webContents) => {
     let [width, height] = win.getSize()
     let [x,y] = win.getPosition()
 
-    if (openHttpsInBrowser({ url, openerWebContents: wc, baseUrl: referrerUrl })) {
+    if (openPopupShellHttpsNavigationInBrowser({ owner: win, url, openerWebContents: wc, baseUrl: referrerUrl })) {
+      return { action: 'deny' };
+    }
+    if (openNonPinokioHttpsInBrowser({ owner: win, url, openerWebContents: wc, baseUrl: referrerUrl })) {
       return { action: 'deny' };
     }
 
@@ -3325,7 +3345,7 @@ const attach = (event, webContents) => {
         rootUrl: root_url
       })
       if (targetUrl) {
-        if (popupShellManager.isPinokioWindowUrl(targetUrl, root_url)) {
+        if (isPinokioNavigationUrl(targetUrl, referrerUrl || (root_url || undefined))) {
           loadNewWindow(targetUrl, PORT)
         } else {
           popupShellManager.openExternalWindow({ url: targetUrl })
@@ -3347,7 +3367,7 @@ const attach = (event, webContents) => {
         popupShellManager.openExternalWindow({ url: targetUrl })
       }
       return { action: 'deny' };
-    } else if (popupShellManager.isPinokioWindowUrl(url, root_url)) {
+    } else if (isPinokioNavigationUrl(url, referrerUrl || (root_url || undefined))) {
       return {
         action: 'allow',
         outlivesOpener: true,
