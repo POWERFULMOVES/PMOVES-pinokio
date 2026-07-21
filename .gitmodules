@@ -1,0 +1,12 @@
+[submodule "api/pmoves-claude-code"]
+	path = api/pmoves-claude-code
+	url = https://github.com/POWERFULMOVES/PMOVES-claude-code.git
+	branch = PMOVES.AI-Edition-Hardened
+[submodule "plugin/code"]
+	path = plugin/code
+	url = https://github.com/POWERFULMOVES/code.git
+	branch = PMOVES.AI-Edition-Hardened
+[submodule "sources/pmoves-crush"]
+	path = sources/pmoves-crush
+	url = https://github.com/POWERFULMOVES/PMOVES-crush.git
+	branch = PMOVES.AI-Edition-Hardened
