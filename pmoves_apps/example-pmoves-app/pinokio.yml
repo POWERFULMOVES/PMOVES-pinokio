@@ -1,0 +1,43 @@
+# Example PMOVES-tagged Pinokio app
+#
+# This is a starter manifest showing how a Pinokio app opts into the
+# PMOVES bootstrap. The `pmoves: true` flag tells the loader to read
+# the CGP and apply it to env. The `pmoves_bootstrap` block is a hint
+# about which CGP profile to use (always "pmoves.bootstrap/v1" for v0).
+#
+# The non-breaking test pair is enforced by install.js / start.js:
+#   - No CGP present      -> install + start succeed with the stub
+#                            Bootstrap (PMOVES_BOOTSTRAP_AGENT=unknown,
+#                            empty tools/services, all 6 constraints)
+#   - CGP present         -> install + start succeed with the real
+#                            Bootstrap and the PMOVES_BOOTSTRAP_*
+#                            env vars populated.
+#
+# This file is intentionally minimal - the real installer / starter
+# would do the actual work. The point is to show the wiring.
+
+pmoves: true
+pmoves_bootstrap:
+  profile: pmoves.bootstrap/v1
+  # The CGP path is read from PMOVES_BOOTSTRAP_CGP_PATH or the
+  # default example. No path is hardcoded here - the app should work
+  # in dev (with the example) and in prod (with the operator's CGP)
+  # without code changes.
+
+requirements:
+  # No special requirements - the loader is pure Node, no npm deps.
+
+install:
+  method: shell
+  shell: "node install.js"
+
+start:
+  method: shell
+  shell: "node start.js"
+
+# Optional: declare which PMOVES services this app uses. The loader
+# logs a warning (not an error) if a tagged service is missing - the
+# app can still run.
+pmoves_services:
+  - tailscale
+  - rustdesk
