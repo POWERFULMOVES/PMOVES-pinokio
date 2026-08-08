@@ -12,8 +12,10 @@
 //   E. ExportEnvTests            (3) - applyCgpToEnv sets the right vars
 //   F. TypedAccessorTests        (3) - hasTool/hasMcp/hasConstraint/routingTarget
 //
-// Total: 22 tests, mirrors the PMOVES.AI side test count (22 for
-// load_bootstrap.py).
+// Total: 24 tests, 7 test groups (A through F + Internal helpers).
+//
+// Mirrors the PMOVES.AI side's test count (22 for load_bootstrap.py,
+// but the Pinokio side has +2 for the additional test groups).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -190,6 +192,28 @@ test('C1: wrong spec is rejected', () => {
     () => loadPmovesCGP({ source: JSON.stringify({ spec: 'wrong.profile/v9' }) }),
     (err) => err instanceof BootstrapError && /spec must be/.test(err.message),
     'loader wraps inner validation error in a BootstrapError; check the wrapper message',
+  );
+});
+
+test('C1b: explicit opts.path to missing file is re-thrown, not silently default', () => {
+  // Verifier finding #1: readFromPath used to catch the BootstrapError
+  // for a missing file and fall through to the default source. After
+  // the fix, an explicit opts.path is treated as not-optional: the
+  // user asked for a specific file, so the missing-file error is
+  // surfaced instead of silently using the vendored example.
+  assert.throws(
+    () => loadPmovesCGP({ path: '/nonexistent/path/missing.cgp.json' }),
+    (err) => err instanceof BootstrapError && /CGP file not found/.test(err.message),
+    'explicit opts.path to a missing file must surface the error, not fall through to default',
+  );
+});
+
+test('C1c: explicit opts.source with malformed JSON is re-thrown', () => {
+  // Same logic as C1b but for the raw-source path.
+  assert.throws(
+    () => loadPmovesCGP({ source: 'this is not json {' }),
+    (err) => err instanceof BootstrapError && /not valid JSON/.test(err.message),
+    'explicit opts.source with malformed JSON must surface the error',
   );
 });
 

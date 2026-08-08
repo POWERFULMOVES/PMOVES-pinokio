@@ -302,6 +302,15 @@ function loadPmovesCGP(opts = {}) {
       result = trySource();
     } catch (err) {
       lastErr = err;
+      // A provided source is not optional. If the user passed
+      // opts.path (the file is missing) or opts.source (the raw
+      // string failed to parse), surface the error immediately
+      // rather than silently falling through to a lower-priority
+      // source. The verifier's #1 finding: this used to apply only
+      // to parse/validate failures, not to the "file not found" case.
+      if (opts.path || opts.source) {
+        throw err;
+      }
       continue;
     }
     if (!result) continue;
@@ -352,7 +361,7 @@ function applyCgpToEnv(bs, env = process.env) {
     if (tailscale.ip) env.PMOVES_BOOTSTRAP_TAILSCALE_IP = tailscale.ip;
   }
   const rustdesk = bs.servicePath('rustdesk');
-  if (rustdesk && Array.isArray(rustdesk.devices)) {
+  if (rustdesk && Array.isArray(rustdesk.devices) && rustdesk.devices.length > 0) {
     env.PMOVES_BOOTSTRAP_RUSTDESK_DEVICES = rustdesk.devices.join(',');
   }
   const hostinger = bs.servicePath('hostinger');
@@ -363,7 +372,7 @@ function applyCgpToEnv(bs, env = process.env) {
   const cloudflare = bs.servicePath('cloudflare');
   if (cloudflare) {
     if (cloudflare.account) env.PMOVES_BOOTSTRAP_CLOUDFLARE_ACCOUNT = cloudflare.account;
-    if (Array.isArray(cloudflare.zones)) {
+    if (Array.isArray(cloudflare.zones) && cloudflare.zones.length > 0) {
       env.PMOVES_BOOTSTRAP_CLOUDFLARE_ZONES = cloudflare.zones.join(',');
     }
   }

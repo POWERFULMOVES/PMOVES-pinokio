@@ -177,7 +177,7 @@ is the fast-path 80% case.
 node --test pmoves_loader/test_pmoves_loader.js
 ```
 
-24 tests, 7 test groups:
+24 tests, 7 test groups (A through F + Internal helpers):
 
 - A. LoadFromExampleTests (5)
 - B. LoadFromSourceTests (4)
