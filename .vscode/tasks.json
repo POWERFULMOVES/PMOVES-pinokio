@@ -1,0 +1,65 @@
+{
+  // Wrappers for the scripts in package.json, so they are one keystroke rather
+  // than a remembered string. Every command below is verbatim from package.json.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pinokio:start",
+      "detail": "electron . — run the app (no debugger; use the launch configs for that)",
+      "type": "npm",
+      "script": "start",
+      "path": "",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "pinokio:pack",
+      "detail": "electron-builder --dir — unpacked build, fastest way to inspect output",
+      "type": "npm",
+      "script": "pack",
+      "path": "",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "pinokio:monkeypatch",
+      // dist depends on this. It copies temp/yarn.js and temp/rebuild over files
+      // inside node_modules/app-builder-lib, so a fresh `npm install` wipes it.
+      // Running dist without it fails inside electron-builder rather than in
+      // Pinokio, which sends people debugging the wrong layer entirely.
+      "detail": "REQUIRED before dist on a fresh node_modules — patches app-builder-lib",
+      "type": "npm",
+      "script": "monkeypatch",
+      "path": "",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "pinokio:dist",
+      "detail": "Full distributable. Runs monkeypatch first — see that task for why.",
+      "type": "npm",
+      "script": "dist",
+      "path": "",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "dependsOn": ["pinokio:monkeypatch"],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "pinokio:where-is-PINOKIO_HOME",
+      // Not a build step — a guard. Launchers belong under PINOKIO_HOME, never
+      // in this fork, and the resolution order is documented rather than
+      // guessed. Run this before creating any launcher file.
+      "detail": "Resolve PINOKIO_HOME the documented way (config.json -> loopback -> env)",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "-c",
+        "import json,os,urllib.request; p=os.path.expanduser('~/.pinokio/config.json'); h=None\ntry:\n    h=json.load(open(p)).get('home')\nexcept Exception: pass\nif not h:\n    try: h=json.loads(urllib.request.urlopen('http://127.0.0.1:42000/pinokio/home',timeout=3).read()).get('path')\n    except Exception: pass\nh=h or os.environ.get('PINOKIO_HOME')\nprint(f'PINOKIO_HOME={h}' if h else 'UNRESOLVED - stop and ask the operator; do NOT use the workspace')"
+      ],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ]
+}
