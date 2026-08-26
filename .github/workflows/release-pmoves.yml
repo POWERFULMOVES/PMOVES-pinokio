@@ -1,0 +1,89 @@
+name: release-pmoves
+
+# PMOVES fork binary publishing (operator-approved 2026-08-26). Upstream's
+# build.yml cannot run on this fork: it signs Windows through SignPath
+# (upstream's org + SIGNPATH_API_TOKEN, absent here), signs mac via
+# mac_certs (absent), and electron-builder's `publish` block targets
+# pinokiocomputer/pinokio — the UPSTREAM repo. This workflow builds the
+# same targets UNSIGNED and uploads them to a DRAFT release on this fork.
+# Artifacts are for internal fleet consumption; unsigned is stated in the
+# release notes, not hidden.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (default: v<version>-pmoves.<run_number>)"
+        required: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-pmoves
+  cancel-in-progress: false
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            targets: --win
+          - os: macos-latest
+            targets: --mac --x64 --arm64
+          - os: ubuntu-latest
+            targets: --linux --x64 --arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@b39b52d1213e96004bfcb1c61a8a6fa8ab84f3e8 # v4.0.1
+        with:
+          node-version: 22
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci; else npm install; fi
+      - name: Build (unsigned, never publish)
+        # CSC_IDENTITY_AUTO_DISCOVERY=false: no mac identity here, and we do
+        # NOT want electron-builder auto-discovering anything. --publish never
+        # overrides package.json's publish block, which points at the
+        # UPSTREAM repo — a real exfiltration-looking footgun if ever enabled.
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          DISABLE_CODE_SIGNING: "true"
+        run: npx electron-builder ${{ matrix.targets }} --publish never
+      - name: Create draft release (once, from the linux job)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          TAG="${INPUT_TAG:-v${V}-pmoves.${GITHUB_RUN_NUMBER}}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          gh release create "$TAG" --draft --title "$TAG" \
+            --notes "PMOVES fork build of Pinokio (UNSIGNED — no SignPath / Apple certificates on this fork; for internal fleet consumption). Notes: $(cat RELEASE.md | head -c 600)" \
+            2>/dev/null || echo "release already exists"
+      - name: Record tag on other OSes
+        if: runner.os != 'Linux'
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "TAG=${INPUT_TAG:-v${V}-pmoves.${GITHUB_RUN_NUMBER}}" >> "$GITHUB_ENV"
+      - name: Upload artifacts to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls dist/ 2>/dev/null || true
+          gh release upload "$TAG" dist/* --clobber || { echo "upload failed — see dist listing above"; exit 1; }
