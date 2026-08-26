@@ -1,89 +1,382 @@
 name: release-pmoves
 
-# PMOVES fork binary publishing (operator-approved 2026-08-26). Upstream's
-# build.yml cannot run on this fork: it signs Windows through SignPath
-# (upstream's org + SIGNPATH_API_TOKEN, absent here), signs mac via
-# mac_certs (absent), and electron-builder's `publish` block targets
-# pinokiocomputer/pinokio — the UPSTREAM repo. This workflow builds the
-# same targets UNSIGNED and uploads them to a DRAFT release on this fork.
-# Artifacts are for internal fleet consumption; unsigned is stated in the
-# release notes, not hidden.
+# PMOVES fork binary publishing (operator-approved 2026-08-26). This is
+# upstream's build.yml VERBATIM, with exactly two surgical changes: (1) the
+# Windows SignPath submission is replaced by an upload of the UNSIGNED
+# installer (SignPath is upstream's org + a token this fork does not have);
+# (2) triggers are dispatch/tags instead of push-to-main. Everything else --
+# native-module fixes, per-arch linux constrain+validate, mac build -- is
+# upstream's proven job body, unchanged. Artifacts are UNSIGNED and the
+# release notes say so.
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (default: v<version>-pmoves.<run_number>)"
+        description: "Release tag override (default: v<version>)"
         required: false
   push:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
-concurrency:
-  group: release-pmoves
-  cancel-in-progress: false
-
 jobs:
-  release:
+
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Get package.json version
+        id: get_version
+        shell: bash
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+      - name: Create an empty release
+        shell: bash
+        env:
+          TAG_INPUT: ${{ github.event.inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Releasing version $PACKAGE_VERSION"
+          TAG="${TAG_INPUT:-v$PACKAGE_VERSION}"
+          echo "Releasing $TAG (UNSIGNED PMOVES fork build)"
+          gh release create "$TAG" --draft \
+            --title "$TAG" \
+            --notes "PMOVES fork build of Pinokio - UNSIGNED (no SignPath/Apple certificates on this fork; internal fleet consumption). $(head -c 600 RELEASE.md)"
+#            --notes "Pinokio version $PACKAGE_VERSION."
+
+  windows-unsigned:
+    if: false
+    needs: "create-release"
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
+        with:
+          node-version: 22
+
+      - name: Build/release Electron app
+        id: electron-builder
+        uses: samuelmeuli/action-electron-builder@v1.6.0
+        with:
+          github_token: ${{ secrets.github_token }}
+
+          # If the commit is tagged with a version (e.g. "v1.0.0"),
+          # release the app after building
+          #release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          release: false  # PMOVES: publish block targets the UPSTREAM repo; never publish from the fork
+          #args: --win --dir  # Build win-unpacked only
+          args: --win
+
+  windows:
+#    if: false
+    needs: "create-release"
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
+        with:
+          node-version: 22
+
+      - name: Build/release Electron app
+        id: electron-builder
+        uses: samuelmeuli/action-electron-builder@v1.6.0
+        with:
+          github_token: ${{ secrets.github_token }}
+
+          # If the commit is tagged with a version (e.g. "v1.0.0"),
+          # release the app after building
+          #release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          #release: true
+          release: false
+          #args: --win --dir  # Build win-unpacked only
+          args: --win
+
+#      - name: Check contents
+#        run: |
+#          dir dist-win32 \
+#          dir dist-win32\\win-unpacked
+#        shell: cmd
+
+### sign start
+
+      - name: upload-unsigned-artifact
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          #path: dist-win32
+          #path: dist-win32/win-unpacked/Pinokio.exe
+          path: dist-win32/Pinokio.exe
+          retention-days: 1
+
+      - name: Upload UNSIGNED windows artifacts (SignPath is upstream-only)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_INPUT: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="${TAG_INPUT:-v$PACKAGE_VERSION}"
+          gh release upload "$TAG" ./dist-win32/*.exe ./dist-win32/latest.yml --clobber
+      - name: Get package.json version
+        id: get_version
+        shell: bash
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+
+      - name: Publish GitHub Release with gh
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Releasing version $PACKAGE_VERSION"
+          #gh release create "v$PACKAGE_VERSION" ./signed-windows/*.exe \
+
+          #gh release upload "v$PACKAGE_VERSION" ./dist-win32/*.exe .dist-win32/latest.yml ./dist-win32/*.exe.blockmap
+          TAG="${TAG_INPUT:-v$PACKAGE_VERSION}"
+          gh release upload "$TAG" ./dist-win32/*.exe ./dist-win32/latest.yml --clobber
+          #  --notes "Pinokio version $PACKAGE_VERSION."
+
+  mac:
+#    if: false
+    needs: "create-release"
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
+        with:
+          node-version: 22
+
+#      - name: Prepare for app notarization
+#        if: startsWith(matrix.os, 'macos')
+#        # Import Apple API key for app notarization on macOS
+#        run: |
+#          mkdir -p ~/private_keys/
+#          echo '${{ secrets.api_key }}' > ~/private_keys/AuthKey_${{ secrets.api_key_id }}.p8
+
+
+      - name: Build/release Electron app
+        id: electron-builder
+        uses: samuelmeuli/action-electron-builder@v1.6.0
+        with:
+          # GitHub token, automatically provided to the action
+          # (No need to define this secret in the repo settings)
+          github_token: ${{ secrets.github_token }}
+
+          # If the commit is tagged with a version (e.g. "v1.0.0"),
+          # release the app after building
+          #release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          release: false  # PMOVES: publish block targets the UPSTREAM repo; never publish from the fork
+          mac_certs: ${{ secrets.mac_certs }}
+          mac_certs_password: ${{ secrets.mac_certs_password }}
+        env:
+          # macOS notarization API key
+          #API_KEY_ID: ${{ secrets.api_key_id }}
+          #API_KEY_ISSUER_ID: ${{ secrets.api_key_issuer_id }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Show notarization-error.log
+        if: failure()
+        run: cat dist-darwin/**/notarization-error.log || echo "No notarization-error.log found"
+
+  linux:
+#    if: false
+    needs: "create-release"
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            targets: --win
-          - os: macos-latest
-            targets: --mac --x64 --arm64
-          - os: ubuntu-latest
-            targets: --linux --x64 --arm64
-    runs-on: ${{ matrix.os }}
+        arch: [x64, arm64]
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@b39b52d1213e96004bfcb1c61a8a6fa8ab84f3e8 # v4.0.1
+      - name: Check out Git repository
+        uses: actions/checkout@v1
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
         with:
           node-version: 22
+
       - name: Install dependencies
         shell: bash
         run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci; else npm install; fi
-      - name: Build (unsigned, never publish)
-        # CSC_IDENTITY_AUTO_DISCOVERY=false: no mac identity here, and we do
-        # NOT want electron-builder auto-discovering anything. --publish never
-        # overrides package.json's publish block, which points at the
-        # UPSTREAM repo — a real exfiltration-looking footgun if ever enabled.
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Constrain Linux targets to matrix arch
         shell: bash
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          DISABLE_CODE_SIGNING: "true"
-        run: npx electron-builder ${{ matrix.targets }} --publish never
-      - name: Create draft release (once, from the linux job)
-        if: runner.os == 'Linux'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          V=$(node -p "require('./package.json').version")
-          TAG="${INPUT_TAG:-v${V}-pmoves.${GITHUB_RUN_NUMBER}}"
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-          gh release create "$TAG" --draft --title "$TAG" \
-            --notes "PMOVES fork build of Pinokio (UNSIGNED — no SignPath / Apple certificates on this fork; for internal fleet consumption). Notes: $(cat RELEASE.md | head -c 600)" \
-            2>/dev/null || echo "release already exists"
-      - name: Record tag on other OSes
-        if: runner.os != 'Linux'
+          node - <<'EOF'
+          const fs = require('fs');
+          const packagePath = './package.json';
+          const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+
+          const targetArch = process.env.TARGET_ARCH;
+          if (!targetArch) {
+            throw new Error('TARGET_ARCH is not set');
+          }
+
+          const linux = packageJson.build && packageJson.build.linux;
+          if (!linux || !Array.isArray(linux.target)) {
+            throw new Error('build.linux.target is not configured as an array');
+          }
+
+          linux.target = linux.target.map((entry) => {
+            if (typeof entry === 'string') {
+              return { target: entry, arch: [targetArch] };
+            }
+            if (entry && typeof entry === 'object') {
+              return { ...entry, arch: [targetArch] };
+            }
+            return entry;
+          });
+
+          fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+          EOF
+
+      - name: Install ARM64 parcel watcher native
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          npm_config_os=linux \
+          npm_config_cpu=arm64 \
+          npm_config_libc=glibc \
+          npm_config_force=true \
+          npm install --no-save @parcel/watcher-linux-arm64-glibc@2.5.1
+
+      - name: Build/release Linux app
         shell: bash
         env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.github_token }}
         run: |
-          V=$(node -p "require('./package.json').version")
-          echo "TAG=${INPUT_TAG:-v${V}-pmoves.${GITHUB_RUN_NUMBER}}" >> "$GITHUB_ENV"
-      - name: Upload artifacts to the draft release
+          ./node_modules/.bin/electron-builder install-app-deps --platform linux --arch ${{ matrix.arch }}
+          ./node_modules/.bin/electron-builder --linux --${{ matrix.arch }} --publish never
+
+      - name: Validate ARM64 Linux packaged natives
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          pick_file() {
+            for candidate in "$@"; do
+              if [ -f "$candidate" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          deb_files=(dist-linux/*arm64*.deb dist-linux/*aarch64*.deb)
+          if [ ${#deb_files[@]} -eq 0 ]; then
+            echo "No ARM64 .deb artifacts found in dist-linux" >&2
+            ls -la dist-linux || true
+            exit 1
+          fi
+
+          for deb in "${deb_files[@]}"; do
+            echo "Validating $deb"
+            workdir="$(mktemp -d)"
+            dpkg-deb -x "$deb" "$workdir/root"
+
+            if ! grep -R --binary-files=without-match -q '/opt/Pinokio/pinokio-bin' "$workdir/root"; then
+              echo "Could not find /opt/Pinokio/pinokio-bin fallback in extracted package" >&2
+              exit 1
+            fi
+
+            pty_node="$(pick_file \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/@homebridge/node-pty-prebuilt-multiarch/build/Release/pty.node" \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/pinokiod/node_modules/@homebridge/node-pty-prebuilt-multiarch/build/Release/pty.node" \
+            )" || {
+              echo "Missing patched pty.node in ARM64 package" >&2
+              exit 1
+            }
+
+            watcher_node="$(pick_file \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/@parcel/watcher/build/Release/watcher.node" \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/pinokiod/node_modules/@parcel/watcher/build/Release/watcher.node" \
+            )" || {
+              echo "Missing patched watcher.node in ARM64 package" >&2
+              exit 1
+            }
+
+            watcher_platform_node="$(pick_file \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/@parcel/watcher-linux-arm64-glibc/watcher.node" \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/pinokiod/node_modules/@parcel/watcher-linux-arm64-glibc/watcher.node" \
+            )" || {
+              echo "Missing @parcel/watcher-linux-arm64-glibc payload in ARM64 package" >&2
+              exit 1
+            }
+
+            file "$pty_node"
+            file "$watcher_node"
+            file "$watcher_platform_node"
+
+            file "$pty_node" | grep -qi 'aarch64' || {
+              echo "pty.node is not ARM64 in $deb" >&2
+              exit 1
+            }
+            file "$watcher_node" | grep -qi 'aarch64' || {
+              echo "watcher.node is not ARM64 in $deb" >&2
+              exit 1
+            }
+            file "$watcher_platform_node" | grep -qi 'aarch64' || {
+              echo "watcher-linux-arm64-glibc payload is not ARM64 in $deb" >&2
+              exit 1
+            }
+
+            rm -rf "$workdir"
+          done
+
+      - name: Upload Linux release artifacts
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls dist/ 2>/dev/null || true
-          gh release upload "$TAG" dist/* --clobber || { echo "upload failed — see dist listing above"; exit 1; }
+          set -euo pipefail
+
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find dist-linux -maxdepth 1 -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*linux*.yml' -o -name 'latest*.yml' \) \
+            -print0)
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Linux artifacts found in dist-linux" >&2
+            ls -la dist-linux || true
+            exit 1
+          fi
+
+          gh release upload "$tag" "${files[@]}" --clobber
