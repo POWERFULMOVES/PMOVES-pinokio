@@ -128,7 +128,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_INPUT: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${TAG_INPUT:-v$PACKAGE_VERSION}"
+          # self-sufficient: this step runs before the job's get_version step,
+          # so PACKAGE_VERSION is unset here — read it ourselves
+          V=$(node -p "require('./package.json').version")
+          TAG="${TAG_INPUT:-v$V}"
           gh release upload "$TAG" ./dist-win32/*.exe ./dist-win32/latest.yml --clobber
       - name: Get package.json version
         id: get_version
