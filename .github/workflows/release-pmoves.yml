@@ -79,7 +79,7 @@ jobs:
   windows:
 #    if: false
     needs: "create-release"
-    runs-on: windows-latest
+    runs-on: windows-2022 # PMOVES: windows-latest image breaks node-gyp's VS discovery for the native rebuilds
     permissions:
       contents: write
     steps:
