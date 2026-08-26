@@ -1,11 +1,11 @@
 name: Build/release
 
+# PMOVES: push-to-main trigger disabled on the fork. This workflow signs
+# through SignPath (upstream's org) and publishes toward upstream's release
+# flow — every merge here woke it into failing runs and stray empty drafts.
+# The fork's publishing lane is release-pmoves.yml (unsigned, this repo).
 on:
-  push:
-    branches:
-      - main
-
-#on: workflow_dispatch
+  workflow_dispatch
 
 jobs:
 
