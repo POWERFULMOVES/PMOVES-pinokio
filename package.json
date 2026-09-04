@@ -1,7 +1,7 @@
 {
   "name": "Pinokio",
   "private": true,
-  "version": "8.0.40",
+  "version": "8.2.0",
   "homepage": "https://pinokio.co",
   "description": "pinokio",
   "main": "main.js",
@@ -12,6 +12,7 @@
     "diagnose:user-agent": "electron script/run-user-agent-diagnostic.js",
     "test:user-agent": "node script/run-user-agent-test.js",
     "test:update-banner": "node script/run-update-banner-test.js",
+    "postinstall": "electron-builder install-app-deps",
     "pack": "./node_modules/.bin/electron-builder --dir",
     "eject": "hdiutil info | grep '/dev/disk' | awk '{print $1}' | xargs -I {} hdiutil detach {}",
     "l": "docker run --rm -ti -v $PWD:/project -w /project -e SNAPCRAFT_BUILD_ENVIRONMENT=host -e SNAP_DESTRUCTIVE_MODE=true electronuserland/builder bash -lc 'rm -rf node_modules && npm install && npm run monkeypatch && ./node_modules/.bin/electron-builder install-app-deps && ./node_modules/.bin/electron-builder -l'",
@@ -45,9 +46,11 @@
       "node_modules/@homebridge/**/*",
       "node_modules/koffi/**/*",
       "node_modules/@koromix/koffi-*/**/*",
+      "node_modules/better-sqlite3/**/*",
       "node_modules/pinokiod/server/public/**/*",
       "node_modules/pinokiod/server/scripts/**/*",
       "node_modules/pinokiod/system/**/*",
+      "node_modules/pinokiod/node_modules/better-sqlite3/**/*",
       "node_modules/pinokiod/node_modules/koffi/**/*",
       "node_modules/pinokiod/node_modules/@koromix/koffi-*/**/*",
       "node_modules/toasted-notifier/vendor/mac.noindex/**/*"
@@ -159,7 +162,7 @@
     "electron-store": "^8.1.0",
     "electron-updater": "^6.6.2",
     "electron-window-state": "^5.0.3",
-    "pinokiod": "^8.0.40"
+    "pinokiod": "^8.2.0"
   },
   "devDependencies": {
     "@electron/rebuild": "3.2.10",
