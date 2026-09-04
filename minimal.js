@@ -5,6 +5,7 @@ const fs = require('fs')
 const Pinokiod = require("pinokiod")
 const config = require('./config')
 const Updater = require('./updater')
+const { configurePinokioUserAgent } = require('./user-agent')
 const pinokiod = new Pinokiod(config)
 const updater = new Updater()
 let tray
@@ -31,7 +32,7 @@ const ensureSplashWindow = () => {
     height: 320,
     frame: false,
     resizable: false,
-    transparent: true,
+    backgroundColor: '#ffffff',
     show: false,
     alwaysOnTop: true,
     skipTaskbar: true,
@@ -65,6 +66,18 @@ const getSplashIcon = () => {
   splashIcon = path.join('assets', 'icon_small.png').split(path.sep).join('/')
   return splashIcon
 }
+const getSplashVersion = () => {
+  try {
+    if (app && typeof app.getVersion === 'function') {
+      const version = app.getVersion()
+      if (version) {
+        return version
+      }
+    }
+  } catch (err) {
+  }
+  return config && config.version ? config.version : ''
+}
 const updateSplashWindow = ({ state = 'loading', message, detail, logPath, icon } = {}) => {
   const win = ensureSplashWindow()
   const query = { state }
@@ -80,6 +93,10 @@ const updateSplashWindow = ({ state = 'loading', message, detail, logPath, icon 
   }
   if (icon) {
     query.icon = icon
+  }
+  const version = getSplashVersion()
+  if (version) {
+    query.version = version
   }
   win.loadFile(path.join(__dirname, 'splash.html'), { query }).finally(() => {
     if (!win.isDestroyed()) {
@@ -131,6 +148,7 @@ app.whenReady().then(async () => {
   if (!gotTheLock) {
     return
   }
+  configurePinokioUserAgent({ app, session: session.defaultSession })
   updateSplashWindow({
     state: 'loading',
     message: 'Starting Pinokio…',
@@ -162,6 +180,17 @@ app.whenReady().then(async () => {
           console.log('clear cache', session.defaultSession)
           await session.defaultSession.clearStorageData()
           console.log("cleared")
+        },
+        open: async (payload = {}) => {
+          const url = typeof payload.url === 'string' ? payload.url.trim() : ''
+          if (!url) {
+            return { ok: false, error: 'missing-url', surface_used: 'browser' }
+          }
+          await Promise.resolve(shell.openExternal(url))
+          return {
+            ok: true,
+            surface_used: 'browser'
+          }
         }
       }
     })
