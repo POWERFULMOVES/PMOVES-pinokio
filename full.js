@@ -441,7 +441,16 @@ const openNonPinokioHttpsInBrowser = ({ event, owner, url, frame, openerWebConte
   if (!target || !owner || owner.isDestroyed?.()) {
     return false
   }
-  if (target.protocol !== 'https:' || isPinokioNavigationUrl(target.href)) {
+  // 2026-09-06 (review P1 #2 on #11): public pinokio.co / pinokio.computer
+  // pages must NOT stay in privileged renderers (contextIsolation:false,
+  // nodeIntegrationInSubFrames:true, full electronAPI, grant-all permission
+  // handler). isPinokioNavigationHost() whitelisted every *.pinokio.co host
+  // as "internal", so line 444's guard returned false for them and they
+  // rendered in-process. Only the app's OWN server origin (isPinokioWindowUrl)
+  // is in-app navigation; everything else — including pinokio.co — goes to
+  // the external browser (window.open keeps its sandboxed community handoff
+  // at the setWindowOpenHandler, which is the correct surface for them).
+  if (target.protocol !== 'https:' || isPinokioWindowUrl(target.href, root_url)) {
     return false
   }
   if (event && typeof event.preventDefault === 'function') {
