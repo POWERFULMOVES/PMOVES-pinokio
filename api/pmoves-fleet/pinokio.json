@@ -1,0 +1,5 @@
+{
+  "title": "PMOVES Fleet",
+  "description": "Live fleet registry view powered by fleet-sentinel — every announced service with health chips and tier icons. The autonetwork console: capability-announced → registry row → health-watched.",
+  "icon": "icon.png"
+}
