@@ -1,0 +1,5 @@
+{
+  "title": "PMOVES Crush",
+  "description": "Launch PMOVES-Crush in the current project folder — the PMOVES fork on PMOVES.AI-Edition-Hardened, with AGENT_TRAIL, agent signatures, MCP servers and CHIT signing wired in. This is the plugin (runs anywhere) rather than the app launcher (runs in its own folder).",
+  "icon": "icon.png"
+}
