@@ -1,0 +1,59 @@
+{
+  // Debug configs for the Pinokio Electron shell (main: main.js, electron 39.2.3).
+  // `npm start` is plain `electron .` with no inspector, so a breakpoint in the
+  // main process never binds — these launch it under the debugger instead.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Pinokio: Electron Main",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      // The Electron binary, not `node` — main.js requires Electron APIs and
+      // exits immediately under plain node.
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "runtimeArgs": ["."],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "sourceMaps": true,
+      "smartStep": true,
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "name": "Pinokio: Electron Main (remote inspect)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      // Breaks before the first line so early startup — config resolution,
+      // PINOKIO_HOME discovery — is reachable, which is exactly where launcher
+      // path bugs surface.
+      "runtimeArgs": ["--inspect-brk=9229", "."],
+      "port": 9229,
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "sourceMaps": true
+    },
+    {
+      "name": "Pinokio: Renderer (attach)",
+      // Attach to an ALREADY-RUNNING Pinokio started with remote debugging.
+      // Chrome DevTools Protocol on 9222; start the app with
+      // `--remote-debugging-port=9222` first or this will not connect.
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}",
+      "timeout": 30000
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Pinokio: Main + Renderer",
+      "configurations": [
+        "Pinokio: Electron Main",
+        "Pinokio: Renderer (attach)"
+      ],
+      "stopAll": true
+    }
+  ]
+}
