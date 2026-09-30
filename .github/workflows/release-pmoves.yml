@@ -273,6 +273,22 @@ jobs:
           npm_config_force=true \
           npm install --no-save @parcel/watcher-linux-arm64-glibc@2.5.1
 
+      # 2026-09-06 (review P1 on #11): pinokiod 8.2 carries the Koffi native
+      # dependency (FFI). build.yml installs it for its own packaging
+      # (line ~340); the release workflow did NOT — an ARM64 release built
+      # without this payload is unusable (no FFI) yet passed validation,
+      # because validation only checked pty + watcher payloads. Mirror the
+      # install here and validate the payload below.
+      - name: Install ARM64 Koffi native
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          npm_config_os=linux \
+          npm_config_cpu=arm64 \
+          npm_config_libc=glibc \
+          npm_config_force=true \
+          npm install --no-save @koromix/koffi-linux-arm64@3.0.2
+
       - name: Build/release Linux app
         shell: bash
         env:
@@ -353,6 +369,21 @@ jobs:
             }
             file "$watcher_platform_node" | grep -qi 'aarch64' || {
               echo "watcher-linux-arm64-glibc payload is not ARM64 in $deb" >&2
+              exit 1
+            }
+
+            # Koffi FFI payload (2026-09-06, review P1 on #11): pinokiod 8.2
+            # needs Koffi; a release missing it installs broken. Validate the
+            # payload exists and is ARM64 alongside the watcher checks.
+            koffi_node="$(pick_file \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/@koromix/koffi-linux-arm64/koffi/linux_arm64glibc/koffi.node" \
+              "$workdir/root/opt/Pinokio/resources/app.asar.unpacked/node_modules/pinokiod/node_modules/@koromix/koffi-linux-arm64/koffi/linux_arm64glibc/koffi.node" \
+            )" || {
+              echo "Missing @koromix/koffi-linux-arm64 payload in ARM64 package" >&2
+              exit 1
+            }
+            file "$koffi_node" | grep -qi 'aarch64' || {
+              echo "koffi.node is not ARM64 in $deb" >&2
               exit 1
             }
 
