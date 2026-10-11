@@ -1,0 +1,5 @@
+{
+  "title": "PMOVES Hermes",
+  "description": "PMOVES-customized Hermes Agent — gateway, skills, MCP orchestration. Launches via hermes-pmoves bootstrap (profile + MCP + CHIT) into the gateway/desktop.",
+  "icon": "icon.png"
+}
