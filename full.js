@@ -5,6 +5,7 @@ const path = require("path")
 const Pinokiod = require("pinokiod")
 const os = require('os')
 const Updater = require('./updater')
+const { confirmArchitecture } = require('./architecture-warning')
 const {
   configurePinokioUserAgent,
   sanitizeUserAgentForRequests
@@ -3634,15 +3635,6 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    
-      // Prevent having error
-      event.preventDefault()
-      // and continue
-      callback(true)
-
-  })
-
   app.on('second-instance', (event, argv) => {
 
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -3670,6 +3662,9 @@ if (!gotTheLock) {
   app.commandLine.appendSwitch('enable-features', 'GetDisplayMediaSet,GetDisplayMediaSetAutoSelectAllScreens');
   
   app.whenReady().then(async () => {
+    if (!await confirmArchitecture({ app, dialog, shell })) {
+      return
+    }
     console.log('App is ready, about to install inspector handlers...')
     configurePinokioUserAgent({ app, session: session.defaultSession })
 
